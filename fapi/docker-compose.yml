@@ -1,0 +1,15 @@
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-app
+    ports:
+      - "8000:8000"
+    networks:
+      - jenkins_net
+
+networks:
+  jenkins_net:
+    external: true
+    name: jenkins_default # 👈 Change this if your Jenkins folder has a different name

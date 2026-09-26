@@ -1,0 +1,68 @@
+pipeline {
+    agent any
+
+    environment {
+        // Variables to keep our script clean
+        IMAGE_NAME   = 'local-fastapi-app'
+        IMAGE_TAG    = 'latest'
+        CONTAINER_ID = 'fastapi-app'
+        NETWORK_NAME = 'jenkins_default' // Must match your shared network
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Pulls the latest code from your local or remote repository
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building fresh FastAPI image: ${IMAGE_NAME}:${IMAGE_TAG}..."
+                // Build the image using the local Dockerfile context
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+            }
+        }
+
+        stage('Run Pytest') {
+            steps {
+                echo 'Running unit tests inside the new image...'
+                // Spin up a temporary container from the new image to run your tests
+                // If pytest fails, the pipeline stops here
+                sh "docker run --rm ${IMAGE_NAME}:${IMAGE_TAG} pytest"
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                echo 'Deploying/Updating local container...'
+                
+                // 1. Remove old container if it exists (using || true so it doesn't crash on the first run)
+                sh "docker stop ${CONTAINER_ID} || true"
+                sh "docker rm ${CONTAINER_ID} || true"
+                
+                // 2. Run the new container attached to your existing network and ports
+                sh "docker run -d \
+                    --name ${CONTAINER_ID} \
+                    -p 8000:8000 \
+                    --network ${NETWORK_NAME} \
+                    --restart unless-stopped \
+                    ${IMAGE_NAME}:${IMAGE_TAG}"
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up dangling Docker images to save disk space...'
+            sh 'docker image prune -f'
+        }
+        success {
+            echo ' FastAPI successfully tested and deployed!'
+        }
+        failure {
+            echo ' Pipeline failed. Check the logs above for errors.'
+        }
+    }
+}
